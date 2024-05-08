@@ -47,12 +47,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMapLon
     private lateinit var db: PlaceDatabase
     private lateinit var placeDao: PlaceDao
     val compositeDisposable = CompositeDisposable()
+    var placeFromMain: Place? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMapsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.saveButton.isEnabled = false
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         val mapFragment = supportFragmentManager
             .findFragmentById(R.id.map) as SupportMapFragment
@@ -76,22 +78,39 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMapLon
         mMap = googleMap
         mMap.setOnMapLongClickListener(this)
 
+        val intent = intent
+        val info = intent.getStringExtra("info")
+        if (info == "new") {
+            //casting
+            locationManager = this.getSystemService(LOCATION_SERVICE) as LocationManager
 
-        //casting
-        locationManager = this.getSystemService(LOCATION_SERVICE) as LocationManager
+            locationListener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    trackBoolean = sharedPreferences.getBoolean("trackBoolean", false)
+                    if (trackBoolean == false) {
+                        val userLocation = LatLng(location.latitude, location.longitude)
+                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 15f))
+                        sharedPreferences.edit().putBoolean("trackBoolean", true).apply()
+                    }
 
-        locationListener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                trackBoolean = sharedPreferences.getBoolean("trackBoolean", false)
-                if (trackBoolean == false) {
-                    val userLocation = LatLng(location.latitude, location.longitude)
-                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 15f))
-                    sharedPreferences.edit().putBoolean("trackBoolean", true).apply()
                 }
-
             }
+            binding.deleteButton.visibility = View.GONE
+            permission()
+
+        } else {
+            mMap.clear()
+            placeFromMain = intent.getSerializableExtra("SelectedPlace") as? Place
+            placeFromMain?.let {
+                val latLng = LatLng(it.latitude, it.longitude)
+                mMap.addMarker(MarkerOptions().position(latLng).title(it.name))
+                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
+                binding.placeText.setText(it.name)
+                binding.saveButton.visibility = View.GONE
+                binding.deleteButton.visibility = View.VISIBLE
+            }
+
         }
-        permission()
     }
 
     private fun permission() {
@@ -184,6 +203,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMapLon
 
         selectedLatitude = p0.latitude
         selectedLongitude = p0.longitude
+        binding.saveButton.isEnabled = true
     }
 
     fun save(view: View) {
@@ -200,13 +220,22 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMapLon
     }
 
     private fun handleResponse() {
-        val intent = Intent(this, MapsActivity::class.java)
+        val intent = Intent(this, MainActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         startActivity(intent)
     }
 
     fun delete(view: View) {
+        placeFromMain?.let {
+            compositeDisposable.add(
 
+                placeDao.delete(it)
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(this::handleResponse)
+
+            )
+        }
     }
 
     override fun onDestroy() {

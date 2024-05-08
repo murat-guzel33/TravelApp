@@ -7,4 +7,8 @@
     </style>
 
     <style name="Theme.TravelBookKotlin" parent="Base.Theme.TravelBookKotlin" />
+
+    <style name="GeneralButton" parent="Widget.MaterialComponents.Button">
+        <item name="backgroundTint">@android:color/darker_gray</item>
+    </style>
 </resources>
